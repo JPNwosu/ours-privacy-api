@@ -2,8 +2,12 @@ import type { ErrorRequestHandler, RequestHandler } from "express";
 
 const STATUS_BY_CODE = {
   INVALID_PARAMETERS: 400,
+  BLOCKED_URL: 400,
   NOT_FOUND: 404,
+  SOURCE_TOO_LARGE: 413,
   INTERNAL_ERROR: 500,
+  UPSTREAM_ERROR: 502,
+  UPSTREAM_TIMEOUT: 504,
 } as const;
 
 export type ErrorCode = keyof typeof STATUS_BY_CODE;
