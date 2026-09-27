@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ApiError, type ErrorDetail } from "./errors.js";
 
 export const MAX_DIMENSION = 5000;
 export const OUTPUT_FORMATS = ["jpeg", "png", "webp", "avif"] as const;
@@ -49,22 +50,14 @@ const quality = z.coerce
   .optional();
 
 export const processQuerySchema = z
-  .strictObject(
-    {
-      url: sourceUrl,
-      width: dimension("width"),
-      height: dimension("height"),
-      crop,
-      format: outputFormat,
-      quality,
-    },
-    {
-      error: (issue) =>
-        issue.code === "unrecognized_keys"
-          ? `unknown parameter${issue.keys.length > 1 ? "s" : ""}: ${issue.keys.join(", ")}`
-          : undefined,
-    },
-  )
+  .strictObject({
+    url: sourceUrl,
+    width: dimension("width"),
+    height: dimension("height"),
+    crop,
+    format: outputFormat,
+    quality,
+  })
   .refine((query) => query.crop === undefined || (query.width !== undefined && query.height !== undefined), {
     error: "crop requires both width and height",
     path: ["crop"],
@@ -75,3 +68,15 @@ export const processQuerySchema = z
   });
 
 export type ProcessQuery = z.infer<typeof processQuerySchema>;
+
+export function parseProcessQuery(query: unknown): ProcessQuery {
+  const result = processQuerySchema.safeParse(query);
+  if (result.success) return result.data;
+
+  const details: ErrorDetail[] = result.error.issues.flatMap((issue) =>
+    issue.code === "unrecognized_keys"
+      ? issue.keys.map((key) => ({ param: key, message: `unknown parameter: ${key}` }))
+      : [{ param: issue.path.join("."), message: issue.message }],
+  );
+  throw new ApiError("INVALID_PARAMETERS", "Invalid query parameters", details);
+}
