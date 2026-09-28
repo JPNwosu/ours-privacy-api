@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../src/errors.js";
-import { parseProcessQuery } from "../src/validation.js";
+import { parseProcessQuery, parseVideoThumbnailQuery } from "../src/validation.js";
 
 const url = "https://example.com/cat.png";
 
-function parseError(query: Record<string, unknown>): ApiError {
+function parseError(
+  query: Record<string, unknown>,
+  parse: (query: unknown) => unknown = parseProcessQuery,
+): ApiError {
   try {
-    parseProcessQuery(query);
+    parse(query);
   } catch (error) {
     if (error instanceof ApiError) return error;
     throw error;
   }
-  throw new Error("Expected parseProcessQuery to throw");
+  throw new Error("Expected parsing to throw");
 }
 
 describe("parseProcessQuery", () => {
@@ -47,6 +50,7 @@ describe("parseProcessQuery", () => {
     ["url is missing", {}, "url", "url is required"],
     ["url is not http(s)", { url: "ftp://example.com/cat.png" }, "url", "url must be an absolute http(s) URL with a domain name"],
     ["url is relative", { url: "cat.png" }, "url", "url must be an absolute http(s) URL with a domain name"],
+    ["url has several problems", { url: "ftp://x" }, "url", "url must be an absolute http(s) URL with a domain name"],
     ["width is 0", { url, width: "0" }, "width", "width must be an integer between 1 and 5000"],
     ["width is over the limit", { url, width: "5001" }, "width", "width must be an integer between 1 and 5000"],
     ["width is fractional", { url, width: "12.5" }, "width", "width must be an integer between 1 and 5000"],
@@ -70,5 +74,28 @@ describe("parseProcessQuery", () => {
     const error = parseError({ url, width: "0", format: "gif" });
 
     expect(error.details?.map((detail) => detail.param)).toEqual(["width", "format"]);
+  });
+});
+
+describe("parseVideoThumbnailQuery", () => {
+  it("accepts time in seconds, including fractions, alongside the image options", () => {
+    expect(parseVideoThumbnailQuery({ url, time: "1.5", width: "200", format: "webp" })).toEqual({
+      url,
+      time: 1.5,
+      width: 200,
+      format: "webp",
+    });
+  });
+
+  it.each([
+    ["time is negative", { url, time: "-1" }, "time", "time must be a number of seconds, 0 or greater"],
+    ["time is not a number", { url, time: "15s" }, "time", "time must be a number of seconds, 0 or greater"],
+    ["crop lacks a height", { url, width: "1", crop: "fill" }, "crop", "crop requires both width and height"],
+    ["a parameter is unknown", { url, seconds: "15" }, "seconds", "unknown parameter: seconds"],
+  ])("rejects the request when %s", (_case, query, param, message) => {
+    const error = parseError(query, parseVideoThumbnailQuery);
+
+    expect(error.status).toBe(400);
+    expect(error.details).toEqual([{ param, message }]);
   });
 });

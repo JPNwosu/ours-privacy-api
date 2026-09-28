@@ -51,28 +51,57 @@ const quality = z.coerce
   .max(100)
   .optional();
 
+const imageOptions = {
+  width: dimension("width"),
+  height: dimension("height"),
+  crop,
+  format: outputFormat,
+  quality,
+};
+
+type ImageOptionsQuery = {
+  width?: number | undefined;
+  height?: number | undefined;
+  crop?: string | undefined;
+  format?: string | undefined;
+  quality?: number | undefined;
+};
+
+function checkImageOptions(query: ImageOptionsQuery, ctx: z.RefinementCtx): void {
+  if (query.crop !== undefined && (query.width === undefined || query.height === undefined)) {
+    ctx.addIssue({ code: "custom", message: "crop requires both width and height", path: ["crop"] });
+  }
+  if (query.format === "png" && query.quality !== undefined) {
+    ctx.addIssue({ code: "custom", message: QUALITY_FORMAT_ERROR, path: ["quality"] });
+  }
+}
+
 export const processQuerySchema = z
-  .strictObject({
-    url: sourceUrl,
-    width: dimension("width"),
-    height: dimension("height"),
-    crop,
-    format: outputFormat,
-    quality,
-  })
-  .refine((query) => query.crop === undefined || (query.width !== undefined && query.height !== undefined), {
-    error: "crop requires both width and height",
-    path: ["crop"],
-  })
-  .refine((query) => !(query.format === "png" && query.quality !== undefined), {
-    error: QUALITY_FORMAT_ERROR,
-    path: ["quality"],
-  });
+  .strictObject({ url: sourceUrl, ...imageOptions })
+  .superRefine(checkImageOptions);
+
+const time = z.coerce
+  .number({ error: "time must be a number of seconds, 0 or greater" })
+  .min(0)
+  .optional();
+
+export const videoThumbnailQuerySchema = z
+  .strictObject({ url: sourceUrl, time, ...imageOptions })
+  .superRefine(checkImageOptions);
 
 export type ProcessQuery = z.infer<typeof processQuerySchema>;
+export type VideoThumbnailQuery = z.infer<typeof videoThumbnailQuerySchema>;
 
 export function parseProcessQuery(query: unknown): ProcessQuery {
-  const result = processQuerySchema.safeParse(query);
+  return parseQuery(processQuerySchema, query);
+}
+
+export function parseVideoThumbnailQuery(query: unknown): VideoThumbnailQuery {
+  return parseQuery(videoThumbnailQuerySchema, query);
+}
+
+function parseQuery<T>(schema: z.ZodType<T>, query: unknown): T {
+  const result = schema.safeParse(query);
   if (result.success) return result.data;
 
   const details: ErrorDetail[] = result.error.issues.flatMap((issue) =>
@@ -80,5 +109,16 @@ export function parseProcessQuery(query: unknown): ProcessQuery {
       ? issue.keys.map((key) => ({ param: key, message: `unknown parameter: ${key}` }))
       : [{ param: issue.path.join("."), message: issue.message }],
   );
-  throw new ApiError("INVALID_PARAMETERS", "Invalid query parameters", details);
+  throw new ApiError("INVALID_PARAMETERS", "Invalid query parameters", withoutDuplicates(details));
+}
+
+// One bad value can fail several checks that share a custom message, e.g. url=ftp://x.
+function withoutDuplicates(details: ErrorDetail[]): ErrorDetail[] {
+  const seen = new Set<string>();
+  return details.filter(({ param, message }) => {
+    const key = `${param}\n${message}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

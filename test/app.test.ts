@@ -3,6 +3,7 @@ import request from "supertest";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { ApiError } from "../src/errors.js";
+import { colorVideo } from "./helpers/video.js";
 
 let sourcePng: Buffer;
 
@@ -17,7 +18,7 @@ afterEach(() => {
 });
 
 function appServing(fetchImage: (url: string) => Promise<Buffer>) {
-  return createApp({ fetchImage });
+  return createApp({ fetchImage, fetchVideo: fetchImage });
 }
 
 describe("GET /health", () => {
@@ -104,6 +105,68 @@ describe("GET /process", () => {
       error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" },
     });
     expect(consoleError).toHaveBeenCalledOnce();
+  });
+});
+
+describe("GET /video/thumbnail", () => {
+  let redThenBlue: Buffer;
+
+  beforeAll(async () => {
+    redThenBlue = await colorVideo(["red", "blue"], { width: 320, height: 240 });
+  });
+
+  function appWithVideo() {
+    const fetchImage = vi.fn(async () => sourcePng);
+    const fetchVideo = vi.fn(async () => redThenBlue);
+    return { app: createApp({ fetchImage, fetchVideo }), fetchImage, fetchVideo };
+  }
+
+  it("returns a jpeg of the frame at the requested time", async () => {
+    const { app, fetchImage, fetchVideo } = appWithVideo();
+
+    const response = await request(app)
+      .get("/video/thumbnail")
+      .query({ url: "https://example.com/clip.mp4", time: 1.5 });
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toBe("image/jpeg");
+    const [red = 0, , blue = 0] = await sharp(response.body).raw().toBuffer();
+    expect(blue).toBeGreaterThan(200);
+    expect(red).toBeLessThan(80);
+    expect(fetchVideo).toHaveBeenCalledExactlyOnceWith("https://example.com/clip.mp4");
+    expect(fetchImage).not.toHaveBeenCalled();
+  });
+
+  it("accepts the same image options as /process", async () => {
+    const response = await request(appWithVideo().app)
+      .get("/video/thumbnail")
+      .query({ url: "https://example.com/clip.mp4", width: 100, height: 100, crop: "fill", format: "webp" });
+
+    expect(response.headers["content-type"]).toBe("image/webp");
+    const { width, height } = await sharp(response.body).metadata();
+    expect({ width, height }).toEqual({ width: 100, height: 100 });
+  });
+
+  it("returns 400 when time is past the end of the video", async () => {
+    const response = await request(appWithVideo().app)
+      .get("/video/thumbnail")
+      .query({ url: "https://example.com/clip.mp4", time: 60 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.details).toEqual([
+      { param: "time", message: "time is past the end of the video (the video is 2.0 seconds long)" },
+    ]);
+  });
+
+  it("validates parameters before downloading anything", async () => {
+    const { app, fetchVideo } = appWithVideo();
+
+    const response = await request(app)
+      .get("/video/thumbnail")
+      .query({ url: "https://example.com/clip.mp4", time: "-1" });
+
+    expect(response.status).toBe(400);
+    expect(fetchVideo).not.toHaveBeenCalled();
   });
 });
 

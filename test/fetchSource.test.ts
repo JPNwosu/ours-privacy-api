@@ -2,7 +2,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { Agent } from "undici";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createImageFetcher, fetchImage } from "../src/fetchImage.js";
+import { createSourceFetcher, fetchImage } from "../src/fetchSource.js";
 
 const MAX_BYTES = 1000;
 
@@ -61,8 +61,8 @@ describe("fetchImage SSRF protection", () => {
 });
 
 // A plain Agent bypasses the SSRF guard so these tests can use the local server.
-describe("createImageFetcher", () => {
-  const fetchLocal = createImageFetcher({
+describe("createSourceFetcher", () => {
+  const fetchLocal = createSourceFetcher({
     dispatcher: new Agent(),
     timeoutMs: 200,
     maxBytes: MAX_BYTES,
@@ -109,7 +109,7 @@ describe("createImageFetcher", () => {
     await expect(fetchLocal(`${baseUrl}/slow`)).rejects.toMatchObject({
       status: 504,
       code: "UPSTREAM_TIMEOUT",
-      message: "Source image was not received within 0.2 seconds",
+      message: "Source was not received within 0.2 seconds",
     });
   });
 

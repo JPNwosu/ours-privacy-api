@@ -6,6 +6,8 @@ import { ApiError } from "./errors.js";
 
 export const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
 export const FETCH_TIMEOUT_MS = 10_000;
+export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+export const VIDEO_FETCH_TIMEOUT_MS = 30_000;
 
 function isPublicAddress(address: string): boolean {
   return ipaddr.process(address).range() === "unicast";
@@ -45,18 +47,18 @@ const connectPublicOnly: buildConnector.connector = (options, callback) => {
 
 const publicOnlyAgent = new Agent({ connect: connectPublicOnly });
 
-export type ImageFetcherOptions = {
+export type SourceFetcherOptions = {
   dispatcher?: Dispatcher;
   timeoutMs?: number;
   maxBytes?: number;
 };
 
-export function createImageFetcher({
+export function createSourceFetcher({
   dispatcher = publicOnlyAgent,
   timeoutMs = FETCH_TIMEOUT_MS,
   maxBytes = MAX_SOURCE_BYTES,
-}: ImageFetcherOptions = {}) {
-  return async function fetchImage(url: string): Promise<Buffer> {
+}: SourceFetcherOptions = {}) {
+  return async function fetchSource(url: string): Promise<Buffer> {
     try {
       const response = await fetch(url, {
         dispatcher,
@@ -77,7 +79,11 @@ export function createImageFetcher({
   };
 }
 
-export const fetchImage = createImageFetcher();
+export const fetchImage = createSourceFetcher();
+export const fetchVideo = createSourceFetcher({
+  maxBytes: MAX_VIDEO_BYTES,
+  timeoutMs: VIDEO_FETCH_TIMEOUT_MS,
+});
 
 // Content-Length is optional and describes the compressed size, so count the real bytes.
 async function readBodyWithLimit(
@@ -103,7 +109,7 @@ function toApiError(error: unknown, timeoutMs: number): ApiError {
     if (error.name === "TimeoutError") {
       return new ApiError(
         "UPSTREAM_TIMEOUT",
-        `Source image was not received within ${timeoutMs / 1000} seconds`,
+        `Source was not received within ${timeoutMs / 1000} seconds`,
       );
     }
     // fetch wraps network failures, including our connector's BLOCKED_URL, in `cause`.
@@ -123,6 +129,6 @@ function hasErrorCode(value: unknown, code: string): boolean {
 function sourceTooLarge(maxBytes: number) {
   return new ApiError(
     "SOURCE_TOO_LARGE",
-    `Source image exceeds the ${maxBytes / 1024 / 1024} MB limit`,
+    `Source exceeds the ${maxBytes / 1024 / 1024} MB limit`,
   );
 }
