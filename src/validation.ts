@@ -42,6 +42,8 @@ const crop = z
   .pipe(z.enum(CROP_MODES, { error: cropError }))
   .optional();
 
+export const PNG_QUALITY_ERROR = "quality is not supported for png (lossless format)";
+
 const quality = z.coerce
   .number({ error: "quality must be an integer between 1 and 100" })
   .int()
@@ -63,7 +65,7 @@ export const processQuerySchema = z
     path: ["crop"],
   })
   .refine((query) => !(query.format === "png" && query.quality !== undefined), {
-    error: "quality is not supported for png (lossless format)",
+    error: PNG_QUALITY_ERROR,
     path: ["quality"],
   });
 
