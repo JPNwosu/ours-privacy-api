@@ -232,68 +232,11 @@ EXIF metadata, including GPS location, camera serial numbers and timestamps, is 
 
 ## Running it in production
 
-The service is **stateless**: each response depends only on the request and the source file. That property drives most of the choices below, because it makes the service easy to cache, scale horizontally and roll back.
+The service is stateless, so it is straightforward to cache, scale horizontally and roll back. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) already runs formatting, type checks, tests with coverage thresholds, the build and a dependency audit on Node 22 and 24. Before real traffic I would add:
 
-### What is in place
-
-- **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push and pull request, on Node 22 and 24: format check, type check, tests with coverage thresholds, build, and `npm audit` of production dependencies. It uses a read-only token and cancels superseded runs.
-- **Configuration through the environment** (`PORT`), with a supported Node range enforced by `engines` and `.nvmrc`.
-- **Defense in depth** inside the app (SSRF checks, allowlists, size, time and pixel limits), so the service is safe to expose even before the infrastructure controls below exist.
-
-### CI/CD pipeline I would build
-
-```mermaid
-flowchart LR
-  PR[Pull request] --> CI[CI checks]
-  CI --> Merge[Merge to main]
-  Merge --> Build[Build image once<br/>tag = commit SHA]
-  Build --> Scan[Scan, SBOM, sign]
-  Scan --> Staging[Deploy to staging]
-  Staging --> Smoke[Smoke tests]
-  Smoke --> Canary[Canary in production<br/>5% → 25% → 100%]
-  Canary -->|SLOs breached| Rollback[Automatic rollback]
-```
-
-- **Build once, promote the same artifact.** The container image is built a single time, tagged with the commit SHA, and the same image moves from staging to production. Only configuration changes between environments, so what was tested is what ships.
-- **Supply chain.** Scan the image for vulnerabilities (Trivy or Grype), generate an SBOM, and sign the image (cosign) so the cluster only runs images this pipeline produced. Pin GitHub Actions to commit SHAs, and let Renovate or Dependabot open dependency updates that must pass CI.
-- **Smoke tests against staging** after each deploy: `/health`, a real `/process` request, and a request that must return `BLOCKED_URL`, which proves the SSRF protection works in that network, not just in unit tests.
-- **Progressive delivery.** Roll out to production gradually, gated on error rate and latency, with automatic rollback. Because the service is stateless, rolling back is just routing traffic to the previous image.
-- **Branch protection** requiring CI and a review before merge.
-
-### Container
-
-- **Multi-stage Dockerfile**: a build stage compiles TypeScript, and the runtime stage (`node:24-slim` or distroless) contains only production dependencies and `dist/`.
-- **Runs as a non-root user with a read-only filesystem**, with only a small writable `tmpfs` at `/tmp` for video temp files.
-- **ffmpeg from the OS package manager** instead of ffmpeg-static, so base-image updates bring security patches.
-- **Built for amd64 and arm64.** sharp ships native binaries per platform, and arm64 instances (such as AWS Graviton) are usually cheaper for CPU-bound image work.
-- **Graceful shutdown** on `SIGTERM`: stop accepting connections, let in-flight requests finish, then exit, so deploys and scale-downs never cut off a response. Not implemented yet; it would be a few lines in `src/index.ts`.
-
-### Cloud architecture
-
-```mermaid
-flowchart LR
-  Client --> CDN["CDN + WAF<br/>(cache, rate limits)"]
-  CDN --> LB[Load balancer]
-  LB --> Images["Image service<br/>(autoscaled containers)"]
-  LB --> Videos["Video service<br/>(separate pool)"]
-  Images --> NAT["Egress: NAT + firewall<br/>(public internet only)"]
-  Videos --> NAT
-```
-
-- **The CDN is the cache.** Transformations are deterministic, so responses get long `Cache-Control` lifetimes, and the CDN caches them keyed on the normalized query. Most traffic never reaches the service, which is the biggest cost and latency win. Object storage (such as S3) can act as a second cache tier behind it.
-- **Signed URLs**: clients get transformation URLs signed with a secret (an HMAC of the parameters), as Cloudinary does. Without a valid signature a request is rejected at the edge. That stops the service being used as a free image proxy and stops attackers bypassing the cache with endless parameter variations.
-- **Compute**: stateless containers on a managed platform (ECS Fargate, Cloud Run or Kubernetes), autoscaled on CPU and concurrent requests. Each instance caps concurrent sharp and ffmpeg jobs with a queue and answers `503` with `Retry-After` when it's full, so a burst degrades gracefully instead of running out of memory.
-- **Videos run on a separate pool.** They are slower, larger and more memory-hungry, so a burst of video requests must not starve image requests. At higher volume, video thumbnails would become asynchronous jobs.
-- **Network-level SSRF protection**, in addition to the application's:
-  1. Egress firewall rules deny private and link-local ranges.
-  2. The cloud metadata endpoint is locked down (on AWS, IMDSv2 with a hop limit of 1).
-  3. The service's cloud role has **no permissions at all**, so even a complete bypass would find no credentials worth stealing.
-- **Infrastructure as code** (Terraform or OpenTofu) for all of the above, changed through pull requests that show the plan output, and applied from the pipeline rather than from laptops.
-
-### Observability
-
-- **Structured JSON logs** (for example with pino) with a request ID taken from or added to an `X-Request-Id` header, replacing `console.error`. For privacy, source URLs are logged as host plus a hash of the path, because query strings often carry access tokens.
-- **Metrics**: request rate, errors by `code` and latency per route, plus per-stage timings (fetch, decode, encode, ffmpeg), source sizes, queue depth and CDN hit ratio.
-- **Tracing** with OpenTelemetry, with a span per stage, so a slow request shows whether the source server or our own processing was slow.
-- **SLOs with burn-rate alerts** rather than fixed thresholds, for example 99.9% of well-formed requests succeed and p95 latency on a cache miss stays under 1 s for images under 5 MB. Client errors (4xx) do not count against the SLO, and upstream failures are tracked separately, since neither is ours to fix.
-- **Separate liveness and readiness checks**: `/health` shows the process is up, and a readiness check would also confirm sharp and ffmpeg load, so an instance with a broken image never receives traffic.
+- **CI/CD**: build a container image once per commit, then scan it, deploy it to staging, smoke-test it and roll it out to production gradually, with automatic rollback.
+- **Container**: a multi-stage image that runs as a non-root user, with ffmpeg from the OS package manager and graceful shutdown on `SIGTERM`.
+- **Caching**: a CDN in front, with long `Cache-Control` lifetimes, since the same request always produces the same output.
+- **Abuse and load limits**: signed URLs and rate limiting at the edge, and a cap on concurrent image and video jobs per instance.
+- **Network-level SSRF protection** in addition to the app's own: egress rules that block private ranges, and a cloud role with no permissions.
+- **Observability**: structured logs with request IDs, per-stage latency and error metrics, and alerts on SLOs.
