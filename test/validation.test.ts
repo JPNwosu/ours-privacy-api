@@ -48,19 +48,92 @@ describe("parseProcessQuery", () => {
 
   it.each([
     ["url is missing", {}, "url", "url is required"],
-    ["url is not http(s)", { url: "ftp://example.com/cat.png" }, "url", "url must be an absolute http(s) URL with a domain name"],
-    ["url is relative", { url: "cat.png" }, "url", "url must be an absolute http(s) URL with a domain name"],
-    ["url has several problems", { url: "ftp://x" }, "url", "url must be an absolute http(s) URL with a domain name"],
+    [
+      "url is not http(s)",
+      { url: "ftp://example.com/cat.png" },
+      "url",
+      "url must be an absolute http(s) URL with a domain name",
+    ],
+    [
+      "url is relative",
+      { url: "cat.png" },
+      "url",
+      "url must be an absolute http(s) URL with a domain name",
+    ],
+    [
+      "url has several problems",
+      { url: "ftp://x" },
+      "url",
+      "url must be an absolute http(s) URL with a domain name",
+    ],
     ["width is 0", { url, width: "0" }, "width", "width must be an integer between 1 and 5000"],
-    ["width is over the limit", { url, width: "5001" }, "width", "width must be an integer between 1 and 5000"],
-    ["width is fractional", { url, width: "12.5" }, "width", "width must be an integer between 1 and 5000"],
-    ["width is not a number", { url, width: "abc" }, "width", "width must be an integer between 1 and 5000"],
-    ["width is repeated", { url, width: ["100", "200"] }, "width", "width must be an integer between 1 and 5000"],
-    ["quality is over 100", { url, quality: "101" }, "quality", "quality must be an integer between 1 and 100"],
-    ["format is unsupported", { url, format: "gif" }, "format", "format must be one of: jpeg, png, webp, avif (jpg is accepted as jpeg)"],
-    ["crop is unknown", { url, width: "1", height: "1", crop: "stretch" }, "crop", "crop must be one of: fit, fill, scale"],
-    ["crop lacks a height", { url, width: "1", crop: "fill" }, "crop", "crop requires both width and height"],
-    ["quality is set for png", { url, format: "png", quality: "80" }, "quality", "quality only applies to jpeg, webp and avif output; set format to one of them"],
+    [
+      "width is over the limit",
+      { url, width: "5001" },
+      "width",
+      "width must be an integer between 1 and 5000",
+    ],
+    [
+      "width is fractional",
+      { url, width: "12.5" },
+      "width",
+      "width must be an integer between 1 and 5000",
+    ],
+    [
+      "width is not a number",
+      { url, width: "abc" },
+      "width",
+      "width must be an integer between 1 and 5000",
+    ],
+    [
+      "width is repeated",
+      { url, width: ["100", "200"] },
+      "width",
+      "width must be an integer between 1 and 5000",
+    ],
+    [
+      "width is hexadecimal",
+      { url, width: "0x10" },
+      "width",
+      "width must be an integer between 1 and 5000",
+    ],
+    [
+      "width uses an exponent",
+      { url, width: "1e3" },
+      "width",
+      "width must be an integer between 1 and 5000",
+    ],
+    ["width is empty", { url, width: "" }, "width", "width must be an integer between 1 and 5000"],
+    [
+      "quality is over 100",
+      { url, quality: "101" },
+      "quality",
+      "quality must be an integer between 1 and 100",
+    ],
+    [
+      "format is unsupported",
+      { url, format: "gif" },
+      "format",
+      "format must be one of: jpeg, png, webp, avif (jpg is accepted as jpeg)",
+    ],
+    [
+      "crop is unknown",
+      { url, width: "1", height: "1", crop: "stretch" },
+      "crop",
+      "crop must be one of: fit, fill, scale",
+    ],
+    [
+      "crop lacks a height",
+      { url, width: "1", crop: "fill" },
+      "crop",
+      "crop requires both width and height",
+    ],
+    [
+      "quality is set for png",
+      { url, format: "png", quality: "80" },
+      "quality",
+      "quality only applies to jpeg, webp and avif output; set format to one of them",
+    ],
     ["a parameter is unknown", { url, widht: "100" }, "widht", "unknown parameter: widht"],
   ])("rejects the request when %s", (_case, query, param, message) => {
     const error = parseError(query);
@@ -88,9 +161,36 @@ describe("parseVideoThumbnailQuery", () => {
   });
 
   it.each([
-    ["time is negative", { url, time: "-1" }, "time", "time must be a number of seconds, 0 or greater"],
-    ["time is not a number", { url, time: "15s" }, "time", "time must be a number of seconds, 0 or greater"],
-    ["crop lacks a height", { url, width: "1", crop: "fill" }, "crop", "crop requires both width and height"],
+    [
+      "time is negative",
+      { url, time: "-1" },
+      "time",
+      "time must be a number of seconds from 0 to 86400",
+    ],
+    [
+      "time is not a number",
+      { url, time: "15s" },
+      "time",
+      "time must be a number of seconds from 0 to 86400",
+    ],
+    [
+      "time is over 24 hours",
+      { url, time: "86401" },
+      "time",
+      "time must be a number of seconds from 0 to 86400",
+    ],
+    [
+      "time uses an exponent",
+      { url, time: "1e21" },
+      "time",
+      "time must be a number of seconds from 0 to 86400",
+    ],
+    [
+      "crop lacks a height",
+      { url, width: "1", crop: "fill" },
+      "crop",
+      "crop requires both width and height",
+    ],
     ["a parameter is unknown", { url, seconds: "15" }, "seconds", "unknown parameter: seconds"],
   ])("rejects the request when %s", (_case, query, param, message) => {
     const error = parseError(query, parseVideoThumbnailQuery);

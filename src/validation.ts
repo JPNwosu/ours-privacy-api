@@ -5,6 +5,7 @@ export const MAX_DIMENSION = 5000;
 export const OUTPUT_FORMATS = ["jpeg", "png", "webp", "avif"] as const;
 export const CROP_MODES = ["fit", "fill", "scale"] as const;
 export const DEFAULT_CROP_MODE = "fit";
+export const MAX_TIME_SECONDS = 86_400;
 
 const sourceUrl = z.httpUrl({
   normalize: true,
@@ -14,14 +15,16 @@ const sourceUrl = z.httpUrl({
       : "url must be an absolute http(s) URL with a domain name",
 });
 
-// Query params always arrive as strings, so coerce to a number before validating.
+// Query params arrive as strings. Number() alone would also accept "0x10", "1e3" and "" (as 0),
+// so only plain decimal digits are converted.
+const numberParam = (pattern: RegExp, error: string) =>
+  z.string({ error }).trim().regex(pattern, { error }).transform(Number);
+
+const integerParam = (min: number, max: number, error: string) =>
+  numberParam(/^\d+$/, error).pipe(z.number({ error }).int().min(min).max(max)).optional();
+
 const dimension = (name: string) =>
-  z.coerce
-    .number({ error: `${name} must be an integer between 1 and ${MAX_DIMENSION}` })
-    .int()
-    .min(1)
-    .max(MAX_DIMENSION)
-    .optional();
+  integerParam(1, MAX_DIMENSION, `${name} must be an integer between 1 and ${MAX_DIMENSION}`);
 
 const formatError = `format must be one of: ${OUTPUT_FORMATS.join(", ")} (jpg is accepted as jpeg)`;
 
@@ -42,14 +45,10 @@ const crop = z
   .pipe(z.enum(CROP_MODES, { error: cropError }))
   .optional();
 
-export const QUALITY_FORMAT_ERROR = "quality only applies to jpeg, webp and avif output; set format to one of them";
+export const QUALITY_FORMAT_ERROR =
+  "quality only applies to jpeg, webp and avif output; set format to one of them";
 
-const quality = z.coerce
-  .number({ error: "quality must be an integer between 1 and 100" })
-  .int()
-  .min(1)
-  .max(100)
-  .optional();
+const quality = integerParam(1, 100, "quality must be an integer between 1 and 100");
 
 const imageOptions = {
   width: dimension("width"),
@@ -69,7 +68,11 @@ type ImageOptionsQuery = {
 
 function checkImageOptions(query: ImageOptionsQuery, ctx: z.RefinementCtx): void {
   if (query.crop !== undefined && (query.width === undefined || query.height === undefined)) {
-    ctx.addIssue({ code: "custom", message: "crop requires both width and height", path: ["crop"] });
+    ctx.addIssue({
+      code: "custom",
+      message: "crop requires both width and height",
+      path: ["crop"],
+    });
   }
   if (query.format === "png" && query.quality !== undefined) {
     ctx.addIssue({ code: "custom", message: QUALITY_FORMAT_ERROR, path: ["quality"] });
@@ -80,9 +83,10 @@ export const processQuerySchema = z
   .strictObject({ url: sourceUrl, ...imageOptions })
   .superRefine(checkImageOptions);
 
-const time = z.coerce
-  .number({ error: "time must be a number of seconds, 0 or greater" })
-  .min(0)
+const timeError = `time must be a number of seconds from 0 to ${MAX_TIME_SECONDS}`;
+
+const time = numberParam(/^\d+(\.\d+)?$/, timeError)
+  .pipe(z.number({ error: timeError }).max(MAX_TIME_SECONDS))
   .optional();
 
 export const videoThumbnailQuerySchema = z
