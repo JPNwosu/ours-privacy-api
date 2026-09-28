@@ -127,8 +127,5 @@ function hasErrorCode(value: unknown, code: string): boolean {
 }
 
 function sourceTooLarge(maxBytes: number) {
-  return new ApiError(
-    "SOURCE_TOO_LARGE",
-    `Source exceeds the ${maxBytes / 1024 / 1024} MB limit`,
-  );
+  return new ApiError("SOURCE_TOO_LARGE", `Source exceeds the ${maxBytes / 1024 / 1024} MB limit`);
 }

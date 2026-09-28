@@ -59,7 +59,12 @@ describe("extractFrame", () => {
     await expect(extractFrame(redThenBlue, 5)).rejects.toMatchObject({
       status: 400,
       code: "INVALID_PARAMETERS",
-      details: [{ param: "time", message: "time is past the end of the video (the video is 2.0 seconds long)" }],
+      details: [
+        {
+          param: "time",
+          message: "time is past the end of the video (the video is 2.0 seconds long)",
+        },
+      ],
     });
   });
 

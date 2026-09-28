@@ -75,7 +75,9 @@ describe("GET /process", () => {
       throw new ApiError("UPSTREAM_ERROR", "Source server responded with 404");
     });
 
-    const response = await request(app).get("/process").query({ url: "https://example.com/gone.png" });
+    const response = await request(app)
+      .get("/process")
+      .query({ url: "https://example.com/gone.png" });
 
     expect(response.status).toBe(502);
     expect(response.body).toEqual({
@@ -98,7 +100,9 @@ describe("GET /process", () => {
       throw new Error("database password is hunter2");
     });
 
-    const response = await request(app).get("/process").query({ url: "https://example.com/cat.png" });
+    const response = await request(app)
+      .get("/process")
+      .query({ url: "https://example.com/cat.png" });
 
     expect(response.status).toBe(500);
     expect(response.body).toEqual({
@@ -138,9 +142,13 @@ describe("GET /video/thumbnail", () => {
   });
 
   it("accepts the same image options as /process", async () => {
-    const response = await request(appWithVideo().app)
-      .get("/video/thumbnail")
-      .query({ url: "https://example.com/clip.mp4", width: 100, height: 100, crop: "fill", format: "webp" });
+    const response = await request(appWithVideo().app).get("/video/thumbnail").query({
+      url: "https://example.com/clip.mp4",
+      width: 100,
+      height: 100,
+      crop: "fill",
+      format: "webp",
+    });
 
     expect(response.headers["content-type"]).toBe("image/webp");
     const { width, height } = await sharp(response.body).metadata();
@@ -154,7 +162,10 @@ describe("GET /video/thumbnail", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.details).toEqual([
-      { param: "time", message: "time is past the end of the video (the video is 2.0 seconds long)" },
+      {
+        param: "time",
+        message: "time is past the end of the video (the video is 2.0 seconds long)",
+      },
     ]);
   });
 

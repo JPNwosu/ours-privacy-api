@@ -11,11 +11,20 @@ const ffmpegPath: string = createRequire(import.meta.url)("ffmpeg-static");
 // so a test can tell which moment a frame came from by its color.
 export async function colorVideo(
   colors: string[],
-  { width = 160, height = 120, container = "mp4" }: { width?: number; height?: number; container?: "mp4" | "webm" } = {},
+  {
+    width = 160,
+    height = 120,
+    container = "mp4",
+  }: { width?: number; height?: number; container?: "mp4" | "webm" } = {},
 ): Promise<Buffer> {
   const directory = await mkdtemp(path.join(os.tmpdir(), "test-video-"));
   const output = path.join(directory, `video.${container}`);
-  const inputs = colors.flatMap((color) => ["-f", "lavfi", "-i", `color=c=${color}:s=${width}x${height}:d=1`]);
+  const inputs = colors.flatMap((color) => [
+    "-f",
+    "lavfi",
+    "-i",
+    `color=c=${color}:s=${width}x${height}:d=1`,
+  ]);
   const concat = `${colors.map((_, index) => `[${index}]`).join("")}concat=n=${colors.length}:v=1`;
   try {
     await promisify(execFile)(ffmpegPath, [

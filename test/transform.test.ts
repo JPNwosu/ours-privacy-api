@@ -65,7 +65,10 @@ describe("transformImage", () => {
     });
 
     it("defaults to crop=fit when both dimensions are given", async () => {
-      const { data } = await transformImage(await solidImage(400, 200), { width: 100, height: 100 });
+      const { data } = await transformImage(await solidImage(400, 200), {
+        width: 100,
+        height: 100,
+      });
 
       expect(await describeImage(data)).toMatchObject({ width: 100, height: 50 });
     });
@@ -108,7 +111,11 @@ describe("transformImage", () => {
 
       const { data } = await transformImage(rotated, { width: 50 });
 
-      expect(await describeImage(data)).toMatchObject({ width: 50, height: 100, orientation: undefined });
+      expect(await describeImage(data)).toMatchObject({
+        width: 50,
+        height: 100,
+        orientation: undefined,
+      });
     });
   });
 
