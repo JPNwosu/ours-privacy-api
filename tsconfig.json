@@ -1,8 +1,5 @@
 {
   "compilerOptions": {
-    "rootDir": "./src",
-    "outDir": "./dist",
-
     "module": "nodenext",
     "target": "esnext",
     "lib": ["esnext"],
@@ -20,5 +17,5 @@
     "moduleDetection": "force",
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }
